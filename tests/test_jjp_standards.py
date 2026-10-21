@@ -50,3 +50,12 @@ def test_real_standards_file_if_present():
     if Path(path).exists():
         layers = std.load_layer_standards(path)
         assert "A-CLNG" in layers and "S-GRID" in layers
+
+
+def test_suffix_variants():
+    standards = std.parse_layer_standards(SAMPLE)
+    assert std.base_layer_name("A-CLNG.3D") == "A-CLNG"
+    assert std.base_layer_name("A-WALL-EX(外)") == "A-WALL-EX"
+    assert std.audit_layer("A-CLNG.3D", standards)[0] == "CONFORMING_VARIANT"
+    assert std.audit_layer("G-GB-雨水.綠標章", standards)[0] == "CONFORMING_VARIANT"
+    assert std.audit_layer("A-CLNG-X.3D", standards)[0] == "CUSTOM_VALID"

@@ -151,14 +151,16 @@ def jjp_audit_layers(port: int) -> dict:
             })
 
     result = std.audit_layers(layers, standards)
-    missing = sorted(set(standards) - {layer["name"] for layer in layers})
-    order = {"VIOLATION_PREFIX": 0, "CUSTOM_VALID": 1, "CONFORMING": 2, "SYSTEM_LAYER": 3}
+    present = {std.base_layer_name(layer["name"]) for layer in layers} | {layer["name"] for layer in layers}
+    missing = sorted(set(standards) - present)
+    order = {"VIOLATION_PREFIX": 0, "CUSTOM_VALID": 1, "CONFORMING_VARIANT": 2, "CONFORMING": 3, "SYSTEM_LAYER": 4}
     return {
         "port": port,
         "projectName": _project_name(header),
         "layerCount": result.total,
         "standardLayerCount": len(standards),
         "conformingCount": result.conforming,
+        "conformingVariantCount": result.variant,
         "customCount": result.custom,
         "violationCount": result.violations,
         "systemCount": result.system,
@@ -179,7 +181,7 @@ def jjp_audit_layers(port: int) -> dict:
 )
 def jjp_audit_properties(port: int) -> dict:
     header = _get_header(port)
-    props = header.core.post_command("API.GetAllPropertyIds", {"propertyType": "UserDefined"}).get("properties", [])
+    props = header.core.post_command("API.GetAllPropertyIds", {"propertyType": "UserDefined"}).get("propertyIds", [])
     definitions = (
         header.core.post_command("API.GetDetailsOfProperties", {"properties": props}).get("propertyDefinitions", [])
         if props else []

@@ -66,6 +66,7 @@ def load_layer_standards(path: Path | None = None) -> dict[str, str]:
 class LayerAuditResult:
     details: list[dict] = field(default_factory=list)
     conforming: int = 0
+    variant: int = 0
     custom: int = 0
     violations: int = 0
     system: int = 0
@@ -76,7 +77,16 @@ class LayerAuditResult:
 
     @property
     def compliance_rate(self) -> float:
-        return (self.conforming + self.custom + self.system) / self.total if self.total else 1.0
+        return (self.conforming + self.variant + self.custom + self.system) / self.total if self.total else 1.0
+
+
+# Suffix conventions used in the JJP template: "A-OBJE.3D", "A-FLOOR(地坪)", "S-BEAM.平面隱藏"
+_SUFFIX = re.compile(r"[.(（].*$")
+
+
+def base_layer_name(name: str) -> str:
+    """Strip a display/usage suffix: 'A-OBJE.3D' -> 'A-OBJE', 'A-FLOOR(地坪)' -> 'A-FLOOR'."""
+    return _SUFFIX.sub("", name).strip()
 
 
 def audit_layer(name: str, standards: dict[str, str]) -> tuple[str, str]:
@@ -85,6 +95,9 @@ def audit_layer(name: str, standards: dict[str, str]) -> tuple[str, str]:
         return "SYSTEM_LAYER", "Built-in Archicad system layer"
     if name in standards:
         return "CONFORMING", standards[name]
+    base = base_layer_name(name)
+    if base != name and base in standards:
+        return "CONFORMING_VARIANT", f"Variant of standard layer {base}: {standards[base]}"
     if name.startswith(ALLOWED_LAYER_PREFIXES):
         return "CUSTOM_VALID", "Custom layer with a standard JJP prefix (allowed, review before adding to template)"
     return "VIOLATION_PREFIX", f"Must start with one of {list(ALLOWED_LAYER_PREFIXES)}"
@@ -99,6 +112,8 @@ def audit_layers(layers: list[dict], standards: dict[str, str]) -> LayerAuditRes
             result.system += 1
         elif status == "CONFORMING":
             result.conforming += 1
+        elif status == "CONFORMING_VARIANT":
+            result.variant += 1
         elif status == "CUSTOM_VALID":
             result.custom += 1
         else:
