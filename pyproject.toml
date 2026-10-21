@@ -3,7 +3,7 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
-name = "tapir-archicad-mcp"
+name = "jjp-bim-audit-mcp"
 version = "0.4.0"
 description = "Stable production MCP server for Archicad automation."
 readme = "README.md"
@@ -11,17 +11,17 @@ requires-python = ">=3.12,<3.14"
 dependencies = [
     "faiss-cpu>=1.9.0",
     "fastmcp>=0.4.1",
-    "multiconn-archicad==0.6.0",
+    "multiconn-archicad==0.6.5",
     "requests>=2.32.3",
     "sentence-transformers>=3.0.0",
     "pydantic>=2.10.0",
 ]
 
 [project.scripts]
-archicad-server = "tapir_archicad_mcp.server:main"
+bim-server = "jjp_bim_audit_mcp.server:main"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/tapir_archicad_mcp"]
+packages = ["src/jjp_bim_audit_mcp"]
 
 [tool.uv]
 managed = true

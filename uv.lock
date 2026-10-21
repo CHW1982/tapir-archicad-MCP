@@ -635,6 +635,29 @@ wheels = [
 ]
 
 [[package]]
+name = "jjp-bim-audit-mcp"
+version = "0.4.0"
+source = { editable = "." }
+dependencies = [
+    { name = "faiss-cpu" },
+    { name = "fastmcp" },
+    { name = "multiconn-archicad" },
+    { name = "pydantic" },
+    { name = "requests" },
+    { name = "sentence-transformers" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "faiss-cpu", specifier = ">=1.9.0" },
+    { name = "fastmcp", specifier = ">=0.4.1" },
+    { name = "multiconn-archicad", specifier = "==0.6.5" },
+    { name = "pydantic", specifier = ">=2.10.0" },
+    { name = "requests", specifier = ">=2.32.3" },
+    { name = "sentence-transformers", specifier = ">=3.0.0" },
+]
+
+[[package]]
 name = "joblib"
 version = "1.5.3"
 source = { registry = "https://pypi.org/simple" }
@@ -829,7 +852,7 @@ wheels = [
 
 [[package]]
 name = "multiconn-archicad"
-version = "0.6.0"
+version = "0.6.5"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "archicad" },
@@ -838,9 +861,9 @@ dependencies = [
     { name = "pydantic" },
     { name = "typing-extensions" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/11/33/6a0377238faafb4f85f45e62ad9e68b74dda1af1aed609cf8b0a45409ab9/multiconn_archicad-0.6.0.tar.gz", hash = "sha256:446f1cbbc9112c558750afa37f4149d5ffeeab3e3b1b3b1caa5355d6c881246f", size = 90475, upload-time = "2026-05-06T14:20:39.796Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/90/35/10159dfa283ec8d941b1176056018ec9bfeb0231c289d06f148fd5de019b/multiconn_archicad-0.6.5.tar.gz", hash = "sha256:b4feb3dce7ac6dd0eb4fe093c0074270c0ede5791cb438307b3c914f69d3b2d9", size = 116402, upload-time = "2026-06-24T19:41:03.916Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/cb/66/da3e4d25de868f88af13620c1006d71f58974b5f28dc25465c356b8e76f5/multiconn_archicad-0.6.0-py3-none-any.whl", hash = "sha256:749af5c8431c07c338247a2b65c071215c5ae3f575f1ae31a062dfb0987bd6c9", size = 123845, upload-time = "2026-05-06T14:20:38.344Z" },
+    { url = "https://files.pythonhosted.org/packages/a5/c3/eb5ce12f0ab83a3f419199b8e48c14b684917dde2577cc25965018eb594c/multiconn_archicad-0.6.5-py3-none-any.whl", hash = "sha256:3981f336b2542572438e99bb5b0f9e0ec9d6257d2d976208531e30c45ac625b8", size = 153614, upload-time = "2026-06-24T19:41:05.122Z" },
 ]
 
 [[package]]
@@ -1672,29 +1695,6 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/83/d3/803453b36afefb7c2bb238361cd4ae6125a569b4db67cd9e79846ba2d68c/sympy-1.14.0.tar.gz", hash = "sha256:d3d3fe8df1e5a0b42f0e7bdf50541697dbe7d23746e894990c030e2b05e72517", size = 7793921, upload-time = "2025-04-27T18:05:01.611Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/a2/09/77d55d46fd61b4a135c444fc97158ef34a095e5681d0a6c10b75bf356191/sympy-1.14.0-py3-none-any.whl", hash = "sha256:e091cc3e99d2141a0ba2847328f5479b05d94a6635cb96148ccb3f34671bd8f5", size = 6299353, upload-time = "2025-04-27T18:04:59.103Z" },
-]
-
-[[package]]
-name = "tapir-archicad-mcp"
-version = "0.4.0"
-source = { editable = "." }
-dependencies = [
-    { name = "faiss-cpu" },
-    { name = "fastmcp" },
-    { name = "multiconn-archicad" },
-    { name = "pydantic" },
-    { name = "requests" },
-    { name = "sentence-transformers" },
-]
-
-[package.metadata]
-requires-dist = [
-    { name = "faiss-cpu", specifier = ">=1.9.0" },
-    { name = "fastmcp", specifier = ">=0.4.1" },
-    { name = "multiconn-archicad", specifier = "==0.6.0" },
-    { name = "pydantic", specifier = ">=2.10.0" },
-    { name = "requests", specifier = ">=2.32.3" },
-    { name = "sentence-transformers", specifier = ">=3.0.0" },
 ]
 
 [[package]]
