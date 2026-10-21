@@ -35,6 +35,17 @@ def _get_header(port: int) -> ConnHeader:
         raise ToolError(f"Port {port} is not an active Archicad connection.") from None
 
 
+def _elements_by_type(core, element_type: str) -> list:
+    """Tapir GetElementsByType supports all element types (incl. Hotlink); fall back to the official API."""
+    try:
+        return core.post_tapir_command("GetElementsByType", {"elementType": element_type}).get("elements", [])
+    except Exception:
+        try:
+            return core.post_command("API.GetElementsByType", {"elementType": element_type}).get("elements", [])
+        except Exception:
+            return []
+
+
 def _project_name(header: ConnHeader) -> str:
     return getattr(header.archicad_id, "projectName", "Unknown")
 
@@ -286,10 +297,7 @@ def jjp_export_localized_names(port: int, output_path: str | None = None) -> dic
     type_pid = prop_id("General_Type")
     samples, missing = {}, []
     for etype in _ELEMENT_TYPES:
-        try:
-            elems = core.post_command("API.GetElementsByType", {"elementType": etype}).get("elements", [])
-        except Exception:  # type not supported by this Archicad version
-            elems = []
+        elems = _elements_by_type(core, etype)
         if elems:
             samples[etype] = elems[0]
         else:
@@ -364,11 +372,14 @@ def jjp_audit_hotlinks(port: int) -> dict:
     core = header.core
     params = hl.load_params(std.standards_dir() / "hotlink_standards.md")
 
-    tree = core.post_tapir_command("GetHotlinks", {}).get("hotlinks", [])
+    try:
+        tree = core.post_tapir_command("GetHotlinks", {}).get("hotlinks", [])
+    except Exception as e:
+        raise ToolError(f"GetHotlinks failed: {type(e).__name__}: {e}") from e
     sources = hl.summarise_nodes(tree, params["networkFilePrefixes"])
 
     # Instances: layer of each placed hotlink module
-    instances = core.post_command("API.GetElementsByType", {"elementType": "Hotlink"}).get("elements", [])
+    instances = _elements_by_type(core, "Hotlink")
     layer_names: list[str] = []
     if instances:
         pid = (core.post_command(
