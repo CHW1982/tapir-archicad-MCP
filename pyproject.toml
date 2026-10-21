@@ -3,8 +3,8 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
-name = "tapir-archicad-mcp"
-version = "0.6.6"
+name = "jjp-bim-audit-mcp"
+version = "0.6.6+jjp.1"
 description = "An MCP server that enables AI agents to automate Archicad using natural language via intelligent, semantic tool discovery."
 readme = "README.md"
 authors = [
@@ -39,6 +39,7 @@ Homepage = "https://github.com/SzamosiMate/tapir-archicad-MCP"
 
 [project.scripts]
 archicad-server = "tapir_archicad_mcp.server:main"
+bim-server = "tapir_archicad_mcp.server:main"
 
 [dependency-groups]
 dev = [
@@ -56,3 +57,6 @@ indent-style = "space"
 quote-style = "double"
 line-ending = "lf"
 docstring-code-format = true
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/tapir_archicad_mcp"]
