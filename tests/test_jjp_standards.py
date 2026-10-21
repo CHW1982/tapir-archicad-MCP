@@ -59,3 +59,50 @@ def test_suffix_variants():
     assert std.audit_layer("A-CLNG.3D", standards)[0] == "CONFORMING_VARIANT"
     assert std.audit_layer("G-GB-雨水.綠標章", standards)[0] == "CONFORMING_VARIANT"
     assert std.audit_layer("A-CLNG-X.3D", standards)[0] == "CUSTOM_VALID"
+
+
+V2_LAYERS = """# x
+## 允許前綴
+- `A-`: 建築
+- `E-`: 機電
+## 後綴慣例
+| `.2D` | 2D |
+## Architecture (A-)
+- `A-CLNG`: 天花版
+## 待確認
+| `T-Decoration` | ? |
+"""
+
+V2_PROPS = """# x
+## JJP 群組前綴
+- `<<JJP>>`: a
+- `<LEBR>`: b
+## 外部標準群組前綴
+- `COBie 2:`: c
+- `LCA `: d
+## 群組命名慣例
+| `(勿改)` | x |
+## 主要屬性欄位
+- `ID和類別`: y
+"""
+
+
+def test_v2_layer_prefixes_and_layers():
+    assert std.parse_allowed_layer_prefixes(V2_LAYERS) == ("A-", "E-")
+    assert std.parse_layer_standards(V2_LAYERS) == {"A-CLNG": "天花版"}
+    prefixes = std.parse_allowed_layer_prefixes(V2_LAYERS)
+    assert std.audit_layer("E-ELEC", {}, prefixes)[0] == "CUSTOM_VALID"
+    assert std.audit_layer("T-Decoration", {}, prefixes)[0] == "VIOLATION_PREFIX"
+
+
+def test_v1_file_falls_back_to_default_prefixes():
+    assert std.parse_allowed_layer_prefixes(SAMPLE) == std.ALLOWED_LAYER_PREFIXES
+
+
+def test_v2_property_prefixes():
+    jjp, ext = std.parse_property_prefixes(V2_PROPS)
+    assert jjp == ("<<JJP>>", "<LEBR>") and ext == ("COBie 2:", "LCA ")
+    assert std.classify_property_group("<LEBR>金屬(材料)", jjp, ext)[0] == "JJP_CONFORMING"
+    assert std.classify_property_group("COBie 2: Type", jjp, ext)[0] == "EXTERNAL_STANDARD"
+    assert std.classify_property_group("LCA Doors", jjp, ext)[0] == "EXTERNAL_STANDARD"
+    assert std.classify_property_group("Pset_Wall", jjp, ext)[0] == "OTHER_GROUP"

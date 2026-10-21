@@ -24,8 +24,13 @@ READ_ONLY = ToolAnnotations(readOnlyHint=True, destructiveHint=False, idempotent
 
 
 def _get_header(port: int) -> ConnHeader:
+    multi_conn = multi_conn_instance.get()
+    if Port(port) not in multi_conn.active:
+        # After a server restart nothing is connected until a scan; do it on demand.
+        multi_conn.refresh.all_ports()
+        multi_conn.connect.all()
     try:
-        return multi_conn_instance.get().active[Port(port)]
+        return multi_conn.active[Port(port)]
     except KeyError:
         raise ToolError(f"Port {port} is not an active Archicad connection.") from None
 
@@ -36,6 +41,14 @@ def _project_name(header: ConnHeader) -> str:
 
 def _read_text(path: Path, missing: str) -> str:
     return path.read_text(encoding="utf-8") if path.exists() else missing
+
+
+def _summarise_groups(details: list[dict]) -> list[dict]:
+    groups: dict[str, dict] = {}
+    for d in details:
+        g = groups.setdefault(d["group"], {"group": d["group"], "status": d["status"], "propertyCount": 0})
+        g["propertyCount"] += 1
+    return sorted(groups.values(), key=lambda g: (g["status"], g["group"]))
 
 
 # --- Resources ---------------------------------------------------------------
@@ -132,6 +145,7 @@ def jjp_audit_layers(port: int) -> dict:
     header = _get_header(port)
     try:
         standards = std.load_layer_standards()
+        prefixes = std.load_allowed_layer_prefixes()
     except OSError as e:
         raise ToolError(f"Cannot read layer standards: {e}. Set JJP_STANDARDS_DIR.") from e
 
@@ -150,7 +164,7 @@ def jjp_audit_layers(port: int) -> dict:
                 "isHidden": layer.get("isHidden", False),
             })
 
-    result = std.audit_layers(layers, standards)
+    result = std.audit_layers(layers, standards, prefixes)
     present = {std.base_layer_name(layer["name"]) for layer in layers} | {layer["name"] for layer in layers}
     missing = sorted(set(standards) - present)
     order = {"VIOLATION_PREFIX": 0, "CUSTOM_VALID": 1, "CONFORMING_VARIANT": 2, "CONFORMING": 3, "SYSTEM_LAYER": 4}
@@ -159,6 +173,8 @@ def jjp_audit_layers(port: int) -> dict:
         "projectName": _project_name(header),
         "layerCount": result.total,
         "standardLayerCount": len(standards),
+        "allowedPrefixes": list(prefixes),
+        "standardsFile": str(std.standards_dir() / "layer_standards.md"),
         "conformingCount": result.conforming,
         "conformingVariantCount": result.variant,
         "customCount": result.custom,
@@ -187,14 +203,15 @@ def jjp_audit_properties(port: int) -> dict:
         if props else []
     )
 
+    jjp_prefixes, external_prefixes = std.load_property_prefixes()
     details = []
-    counts = {"JJP_CONFORMING": 0, "NON_STANDARD_JJP_GROUP": 0, "OTHER_GROUP": 0}
+    counts = {"JJP_CONFORMING": 0, "EXTERNAL_STANDARD": 0, "NON_STANDARD_JJP_GROUP": 0, "OTHER_GROUP": 0}
     for item in definitions:
         prop = item.get("propertyDefinition")
         if not prop:
             continue
         group = prop.get("group", {})
-        status, description = std.classify_property_group(group.get("name", ""))
+        status, description = std.classify_property_group(group.get("name", ""), jjp_prefixes, external_prefixes)
         counts[status] += 1
         details.append({
             "name": prop.get("name", ""),
@@ -209,8 +226,12 @@ def jjp_audit_properties(port: int) -> dict:
         "port": port,
         "projectName": _project_name(header),
         "totalProperties": len(details),
+        "jjpPrefixes": list(jjp_prefixes),
+        "externalPrefixes": list(external_prefixes),
         "jjpConforming": counts["JJP_CONFORMING"],
+        "externalStandard": counts["EXTERNAL_STANDARD"],
         "nonStandardJjpGroups": counts["NON_STANDARD_JJP_GROUP"],
         "otherGroups": counts["OTHER_GROUP"],
-        "details": sorted(details, key=lambda d: (d["status"] != "NON_STANDARD_JJP_GROUP", d["group"], d["name"])),
+        "groups": _summarise_groups(details),
+        "flagged": [d for d in details if d["status"] in ("NON_STANDARD_JJP_GROUP", "OTHER_GROUP")],
     }

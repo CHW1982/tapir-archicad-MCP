@@ -37,6 +37,40 @@ _LAYER_LINE = re.compile(r"^-\s*`([^`]+)`\s*:\s*(.+?)\s*$")
 _CODE = re.compile(r"`([^`]+)`")
 
 
+def _is_layer_code(code: str) -> bool:
+    # Prefix declarations ("A-") and suffix notes (".2D", "(說明)") are not layers.
+    return not code.endswith("-") and not code.startswith((".", "(", "（"))
+
+
+def _section_codes(markdown: str, heading_filter) -> list[tuple[str, str]]:
+    """Return (section heading, code) for backticked codes on bullet lines in matching sections."""
+    out, section = [], ""
+    for raw in markdown.splitlines():
+        line = raw.strip()
+        if line.startswith("#"):
+            section = line.lstrip("#").strip()
+            continue
+        if line.startswith("-") and heading_filter(section):
+            match = _CODE.search(line)
+            if match:
+                out.append((section, match.group(1)))
+    return out
+
+
+def parse_allowed_layer_prefixes(markdown: str) -> tuple[str, ...]:
+    """Prefixes declared in a section whose heading contains '前綴' (codes ending in '-')."""
+    found = tuple(c for _, c in _section_codes(markdown, lambda s: "前綴" in s) if c.endswith("-"))
+    return found or ALLOWED_LAYER_PREFIXES
+
+
+def parse_property_prefixes(markdown: str) -> tuple[tuple[str, ...], tuple[str, ...]]:
+    """(JJP group prefixes, external-standard group prefixes) from '前綴' sections."""
+    jjp, external = [], []
+    for section, code in _section_codes(markdown, lambda s: "前綴" in s):
+        (external if "外部" in section else jjp).append(code)
+    return (tuple(jjp) or JJP_PROPERTY_GROUP_PREFIXES, tuple(external))
+
+
 def parse_layer_standards(markdown: str) -> dict[str, str]:
     """Parse layer_standards.md into {layer name: description}."""
     layers: dict[str, str] = {}
@@ -50,16 +84,30 @@ def parse_layer_standards(markdown: str) -> dict[str, str]:
             continue
         match = _LAYER_LINE.match(line)
         if match:
-            layers[match.group(1)] = match.group(2)
+            if _is_layer_code(match.group(1)):
+                layers[match.group(1)] = match.group(2)
             continue
         for code in _CODE.findall(line):
-            layers.setdefault(code, section)
+            if _is_layer_code(code):
+                layers.setdefault(code, section)
     return layers
 
 
 def load_layer_standards(path: Path | None = None) -> dict[str, str]:
     path = path or standards_dir() / "layer_standards.md"
     return parse_layer_standards(path.read_text(encoding="utf-8"))
+
+
+def load_allowed_layer_prefixes(path: Path | None = None) -> tuple[str, ...]:
+    path = path or standards_dir() / "layer_standards.md"
+    return parse_allowed_layer_prefixes(path.read_text(encoding="utf-8")) if path.exists() else ALLOWED_LAYER_PREFIXES
+
+
+def load_property_prefixes(path: Path | None = None) -> tuple[tuple[str, ...], tuple[str, ...]]:
+    path = path or standards_dir() / "property_standards.md"
+    if not path.exists():
+        return JJP_PROPERTY_GROUP_PREFIXES, ()
+    return parse_property_prefixes(path.read_text(encoding="utf-8"))
 
 
 @dataclass
@@ -89,7 +137,9 @@ def base_layer_name(name: str) -> str:
     return _SUFFIX.sub("", name).strip()
 
 
-def audit_layer(name: str, standards: dict[str, str]) -> tuple[str, str]:
+def audit_layer(
+    name: str, standards: dict[str, str], prefixes: tuple[str, ...] = ALLOWED_LAYER_PREFIXES
+) -> tuple[str, str]:
     """Return (status, description) for one layer name."""
     if "archicad" in name.lower():
         return "SYSTEM_LAYER", "Built-in Archicad system layer"
@@ -98,16 +148,18 @@ def audit_layer(name: str, standards: dict[str, str]) -> tuple[str, str]:
     base = base_layer_name(name)
     if base != name and base in standards:
         return "CONFORMING_VARIANT", f"Variant of standard layer {base}: {standards[base]}"
-    if name.startswith(ALLOWED_LAYER_PREFIXES):
+    if name.startswith(prefixes):
         return "CUSTOM_VALID", "Custom layer with a standard JJP prefix (allowed, review before adding to template)"
-    return "VIOLATION_PREFIX", f"Must start with one of {list(ALLOWED_LAYER_PREFIXES)}"
+    return "VIOLATION_PREFIX", f"Must start with one of {list(prefixes)}"
 
 
-def audit_layers(layers: list[dict], standards: dict[str, str]) -> LayerAuditResult:
+def audit_layers(
+    layers: list[dict], standards: dict[str, str], prefixes: tuple[str, ...] = ALLOWED_LAYER_PREFIXES
+) -> LayerAuditResult:
     """layers: [{"name", "guid", "isLocked", "isHidden"}]"""
     result = LayerAuditResult()
     for layer in layers:
-        status, description = audit_layer(layer.get("name", ""), standards)
+        status, description = audit_layer(layer.get("name", ""), standards, prefixes)
         if status == "SYSTEM_LAYER":
             result.system += 1
         elif status == "CONFORMING":
@@ -122,12 +174,18 @@ def audit_layers(layers: list[dict], standards: dict[str, str]) -> LayerAuditRes
     return result
 
 
-def classify_property_group(group_name: str) -> tuple[str, str]:
-    if group_name.startswith(JJP_PROPERTY_GROUP_PREFIXES):
+def classify_property_group(
+    group_name: str,
+    jjp_prefixes: tuple[str, ...] = JJP_PROPERTY_GROUP_PREFIXES,
+    external_prefixes: tuple[str, ...] = (),
+) -> tuple[str, str]:
+    if group_name.startswith(jjp_prefixes):
         return "JJP_CONFORMING", "Standard JJP property group"
+    if external_prefixes and group_name.startswith(external_prefixes):
+        return "EXTERNAL_STANDARD", "Allowed external / built-in standard group (COBie, LCA, ...)"
     lowered = group_name.lower()
     if "jjp" in lowered or "tai" in lowered:
         return "NON_STANDARD_JJP_GROUP", (
-            f"Looks like a JJP group but lacks a standard prefix {list(JJP_PROPERTY_GROUP_PREFIXES)}"
+            f"Looks like a JJP group but lacks a standard prefix {list(jjp_prefixes)}"
         )
     return "OTHER_GROUP", "Built-in or generic property group"
