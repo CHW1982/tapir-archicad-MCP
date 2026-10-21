@@ -342,3 +342,82 @@ def jjp_export_localized_names(port: int, output_path: str | None = None) -> dic
         "builtInPropertyGroups": len(groups),
         "elementTypes": element_types,
     }
+
+
+# --- Hotlink audit -----------------------------------------------------------
+
+from tapir_archicad_mcp.tools.custom import jjp_hotlinks as hl  # noqa: E402
+
+
+@mcp.tool(
+    name="jjp_audit_hotlinks",
+    title="JJP Hotlink Audit",
+    description=(
+        "Audits hotlinks of the Archicad project on the given port against hotlink_standards.md: hotlink "
+        "sources (nodes) per source file, local-path sources, nested hotlinks, and whether hotlink instances "
+        "sit on locked A-LINK- layers. BIMcloud credentials are removed from all paths. Read-only."
+    ),
+    annotations=READ_ONLY,
+)
+def jjp_audit_hotlinks(port: int) -> dict:
+    header = _get_header(port)
+    core = header.core
+    params = hl.load_params(std.standards_dir() / "hotlink_standards.md")
+
+    tree = core.post_tapir_command("GetHotlinks", {}).get("hotlinks", [])
+    sources = hl.summarise_nodes(tree, params["networkFilePrefixes"])
+
+    # Instances: layer of each placed hotlink module
+    instances = core.post_command("API.GetElementsByType", {"elementType": "Hotlink"}).get("elements", [])
+    layer_names: list[str] = []
+    if instances:
+        pid = (core.post_command(
+            "API.GetPropertyIds", {"properties": [{"type": "BuiltIn", "nonLocalizedName": "ModelView_LayerName"}]}
+        ).get("properties") or [{}])[0].get("propertyId")
+        if pid:
+            res = core.post_command(
+                "API.GetPropertyValuesOfElements", {"elements": instances, "properties": [{"propertyId": pid}]}
+            )
+            for item in res.get("propertyValuesForElements", []):
+                values = item.get("propertyValues") or [{}]
+                layer_names.append(values[0].get("propertyValue", {}).get("value", ""))
+    ids = core.post_command("API.GetAttributesByType", {"attributeType": "Layer"}).get("attributeIds", [])
+    attrs = core.post_command("API.GetLayerAttributes", {"attributeIds": ids}).get("attributes", []) if ids else []
+    locked = {a["layerAttribute"]["name"]: a["layerAttribute"].get("isLocked", False) for a in attrs if a.get("layerAttribute")}
+    inst = hl.audit_instance_layers(layer_names, locked, params["linkLayerPrefix"], params["requireLockedLinkLayer"])
+
+    max_nodes = params["maxNodesPerSource"]
+    report = []
+    for s in sources.values():
+        report.append({
+            "source": s.source,
+            "kind": s.kind,
+            "nodeCount": len(s.nodes),
+            "status": s.status(max_nodes),
+            "nestedSources": s.nested,
+            "nodes": s.nodes,
+        })
+    report.sort(key=lambda r: (r["status"] == ["OK"], -r["nodeCount"]))
+
+    violations = sum(1 for r in report if any(f.startswith("VIOLATION") for f in r["status"]))
+    violations += 1 if inst["instancesNotOnLinkLayer"] else 0
+    return {
+        "port": port,
+        "projectName": _project_name(header),
+        "params": params,
+        "summary": {
+            "sourceFiles": len(report),
+            "hotlinkNodes": sum(r["nodeCount"] for r in report),
+            "instances": inst["instanceCount"],
+            "localPathSources": sum(1 for r in report if r["kind"] == "LOCAL_FILE"),
+            "networkFileSources": sum(1 for r in report if r["kind"] == "NETWORK_FILE"),
+            "sourcesWithMultipleNodes": sum(1 for r in report if "REVIEW_MULTIPLE_NODES" in r["status"]),
+            "nestedSources": sum(len(r["nestedSources"]) for r in report),
+            "instancesNotOnLinkLayer": inst["instancesNotOnLinkLayer"],
+            "unlockedLinkLayers": inst["unlockedLinkLayers"],
+            "violationItems": violations,
+        },
+        "sources": report,
+        "instanceLayers": inst["layersUsed"],
+        "notChecked": ["熱連結物件缺少部件（請在圖庫管理器確認）", "實例與來源的對應（Tapir 1.5.9 未提供）"],
+    }
