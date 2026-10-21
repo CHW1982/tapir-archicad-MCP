@@ -106,3 +106,8 @@ def test_v2_property_prefixes():
     assert std.classify_property_group("COBie 2: Type", jjp, ext)[0] == "EXTERNAL_STANDARD"
     assert std.classify_property_group("LCA Doors", jjp, ext)[0] == "EXTERNAL_STANDARD"
     assert std.classify_property_group("Pset_Wall", jjp, ext)[0] == "OTHER_GROUP"
+
+
+def test_review_and_changelog_sections_are_not_standards():
+    md = V2_LAYERS + "\n## v1 → v2 變更紀錄\n- `A-DIM` 已拆分\n## 待確認 / 建議整併\n- `A-HIDE` 不存在\n"
+    assert std.parse_layer_standards(md) == {"A-CLNG": "天花版"}

@@ -235,3 +235,110 @@ def jjp_audit_properties(port: int) -> dict:
         "groups": _summarise_groups(details),
         "flagged": [d for d in details if d["status"] in ("NON_STANDARD_JJP_GROUP", "OTHER_GROUP")],
     }
+
+
+# --- Localization export -----------------------------------------------------
+
+# Element types accepted by API.GetElementsByType (Archicad 28 JSON API).
+_ELEMENT_TYPES = [
+    "Wall", "Column", "Beam", "Window", "Door", "Object", "Lamp", "Slab", "Roof", "Mesh",
+    "Dimension", "RadialDimension", "LevelDimension", "AngleDimension", "Text", "Label", "Zone",
+    "Hatch", "Line", "PolyLine", "Arc", "Circle", "Spline", "Hotspot", "CutPlane", "Camera",
+    "CamSet", "Group", "SectElem", "Drawing", "Picture", "Detail", "Elevation", "InteriorElevation",
+    "Worksheet", "Hotlink", "CurtainWall", "CurtainWallSegment", "CurtainWallFrame",
+    "CurtainWallPanel", "CurtainWallJunction", "CurtainWallAccessory", "Shell", "Skylight", "Morph",
+    "ChangeMarker", "Stair", "Riser", "Tread", "StairStructure", "Railing", "RailingToprail",
+    "RailingHandrail", "RailingRail", "RailingPost", "RailingInnerPost", "RailingBaluster",
+    "RailingPanel", "RailingSegment", "RailingNode", "RailingBalusterSet", "RailingPattern",
+    "RailingToprailEnd", "RailingHandrailEnd", "RailingRailEnd", "RailingToprailConnection",
+    "RailingHandrailConnection", "RailingRailConnection", "RailingEndFinish", "BeamSegment",
+    "ColumnSegment", "Opening",
+]
+
+
+def _chunks(items: list, size: int):
+    for i in range(0, len(items), size):
+        yield items[i:i + size]
+
+
+@mcp.tool(
+    name="jjp_export_localized_names",
+    title="Export Archicad UI-language names",
+    description=(
+        "Reads the UI-language (e.g. Traditional Chinese) names Archicad uses for element types and for "
+        "every built-in property and property group, and writes them as JSON to "
+        "<JJP_STANDARDS_DIR>/archicad_localized_names.json (or output_path). Element type names are "
+        "sampled from one existing element per type, so only types present in the project are covered. "
+        "Returns a summary only. Read-only for the project."
+    ),
+    annotations=READ_ONLY,
+)
+def jjp_export_localized_names(port: int, output_path: str | None = None) -> dict:
+    header = _get_header(port)
+    core = header.core
+
+    def prop_id(non_localized: str) -> dict | None:
+        res = core.post_command("API.GetPropertyIds", {"properties": [{"type": "BuiltIn", "nonLocalizedName": non_localized}]})
+        item = (res.get("properties") or [{}])[0]
+        return item.get("propertyId")
+
+    # 1. Element types: one sample element per type -> General_Type display value
+    type_pid = prop_id("General_Type")
+    samples, missing = {}, []
+    for etype in _ELEMENT_TYPES:
+        try:
+            elems = core.post_command("API.GetElementsByType", {"elementType": etype}).get("elements", [])
+        except Exception:  # type not supported by this Archicad version
+            elems = []
+        if elems:
+            samples[etype] = elems[0]
+        else:
+            missing.append(etype)
+    element_types = {}
+    if type_pid and samples:
+        names = list(samples)
+        res = core.post_command(
+            "API.GetPropertyValuesOfElements",
+            {"elements": [samples[n] for n in names], "properties": [{"propertyId": type_pid}]},
+        )
+        for etype, item in zip(names, res.get("propertyValuesForElements", [])):
+            values = item.get("propertyValues") or [{}]
+            element_types[etype] = values[0].get("propertyValue", {}).get("value")
+
+    # 2. Built-in properties: nonLocalizedName -> localized group / name
+    all_names = core.post_command("API.GetAllPropertyNames", {}).get("properties", [])
+    builtin = [p["nonLocalizedName"] for p in all_names if p.get("type") == "BuiltIn"]
+    properties = {}
+    for chunk in _chunks(builtin, 200):
+        ids = core.post_command(
+            "API.GetPropertyIds", {"properties": [{"type": "BuiltIn", "nonLocalizedName": n} for n in chunk]}
+        ).get("properties", [])
+        pairs = [(n, i["propertyId"]) for n, i in zip(chunk, ids) if "propertyId" in i]
+        if not pairs:
+            continue
+        details = core.post_command(
+            "API.GetDetailsOfProperties", {"properties": [{"propertyId": pid} for _, pid in pairs]}
+        ).get("propertyDefinitions", [])
+        for (n, _), d in zip(pairs, details):
+            pd = d.get("propertyDefinition")
+            if pd:
+                properties[n] = {"group": pd.get("group", {}).get("name"), "name": pd.get("name"), "type": pd.get("type")}
+
+    groups = sorted({v["group"] for v in properties.values() if v.get("group")})
+    data = {
+        "source": {"projectName": _project_name(header), "port": port, "tool": "jjp_export_localized_names"},
+        "elementTypes": element_types,
+        "elementTypesNotSampled": missing,
+        "builtInPropertyGroups": groups,
+        "builtInProperties": properties,
+    }
+    out = Path(output_path) if output_path else std.standards_dir() / "archicad_localized_names.json"
+    out.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+    return {
+        "written": str(out),
+        "elementTypesSampled": len(element_types),
+        "elementTypesNotSampled": missing,
+        "builtInProperties": len(properties),
+        "builtInPropertyGroups": len(groups),
+        "elementTypes": element_types,
+    }

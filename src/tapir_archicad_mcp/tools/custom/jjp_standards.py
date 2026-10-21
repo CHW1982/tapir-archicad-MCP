@@ -37,6 +37,10 @@ _LAYER_LINE = re.compile(r"^-\s*`([^`]+)`\s*:\s*(.+?)\s*$")
 _CODE = re.compile(r"`([^`]+)`")
 
 
+# Sections that mention layer names without declaring them as standard.
+_NON_STANDARD_SECTIONS = ("待確認", "變更", "紀錄", "Changelog")
+
+
 def _is_layer_code(code: str) -> bool:
     # Prefix declarations ("A-") and suffix notes (".2D", "(說明)") are not layers.
     return not code.endswith("-") and not code.startswith((".", "(", "（"))
@@ -75,12 +79,14 @@ def parse_layer_standards(markdown: str) -> dict[str, str]:
     """Parse layer_standards.md into {layer name: description}."""
     layers: dict[str, str] = {}
     section = ""
+    skipping = False
     for raw in markdown.splitlines():
         line = raw.strip()
         if line.startswith("## "):
             section = line[3:].strip()
+            skipping = any(k in section for k in _NON_STANDARD_SECTIONS)
             continue
-        if not line.startswith("-"):
+        if skipping or not line.startswith("-"):
             continue
         match = _LAYER_LINE.match(line)
         if match:
